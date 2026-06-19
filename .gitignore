@@ -1,0 +1,19 @@
+# STM32CubeIDE / Eclipse
+**/Debug/
+**/Release/
+*.o
+*.d
+*.su
+*.cyclo
+*.elf
+*.map
+*.list
+.metadata/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# OS generated files
+.DS_Store
+Thumbs.db

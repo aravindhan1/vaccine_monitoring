@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaccine Cold Chain Monitor</title>
+    
+    <!-- 1. THE LIBRARIES (Pulled securely from the internet) -->
+    <!-- Tailwind CSS: Makes everything look professional instantly -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MQTT.js: The magic library that talks to your Ubuntu Switchboard -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <!-- Phosphor Icons: Beautiful, modern icons for our dashboard -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Custom Tailwind Colors for our specific alerts -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#121212',
+                        cardbg: '#1E1E1E',
+                        safe: '#10B981', // Emerald Green
+                        danger: '#EF4444', // Red
+                        warning: '#F59E0B' // Orange
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- A tiny bit of custom CSS for the flashing alarm animation -->
+    <style>
+        @keyframes pulse-red {
+            0%, 100% { background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.5); }
+            50% { background-color: rgba(239, 68, 68, 0.3); border-color: rgba(239, 68, 68, 1); }
+        }
+        .alarm-active {
+            animation: pulse-red 1.5s infinite;
+            border-width: 2px;
+        }
+    </style>
+</head>
+<body class="bg-darkbg text-white min-h-screen font-sans antialiased selection:bg-safe selection:text-white">
+
+    <!-- NAVIGATION BAR -->
+    <nav class="bg-cardbg border-b border-gray-800 px-6 py-4 flex justify-between items-center shadow-lg">
+        <div class="flex items-center space-x-3">
+            <i class="ph-fill ph-thermometer text-3xl text-blue-500"></i>
+            <h1 class="text-2xl font-bold tracking-wider">Cold Chain <span class="text-blue-500">Command Center</span></h1>
+        </div>
+        
+        <!-- Server Connection Status -->
+        <div class="flex items-center space-x-2 bg-gray-800 px-4 py-2 rounded-full">
+            <div id="connection-dot" class="w-3 h-3 rounded-full bg-warning animate-pulse"></div>
+            <span id="connection-text" class="text-sm font-medium text-gray-300">Connecting to Hub...</span>
+        </div>
+    </nav>
+
+    <!-- MAIN DASHBOARD AREA -->
+    <main class="container mx-auto px-6 py-8">
+        
+        <!-- Header -->
+        <div class="mb-8">
+            <h2 class="text-xl text-gray-400">Live Telemetry</h2>
+            <p class="text-sm text-gray-500 mt-1">Monitoring active vaccine storage units across the facility.</p>
+        </div>
+
+        <!-- GRID FOR NODES (We will build Node 1 first, leaving room for 2 and 3 later) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+            <!-- ========================================== -->
+            <!-- NODE 1 CARD -->
+            <!-- ========================================== -->
+            <div id="node1-card" class="bg-cardbg rounded-2xl p-6 shadow-xl border border-gray-800 transition-all duration-300">
+                
+                <!-- Card Header -->
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex items-center space-x-3">
+                        <i class="ph-fill ph-cpu text-2xl text-gray-400"></i>
+                        <h3 class="text-xl font-bold">Node 01</h3>
+                    </div>
+                    <span id="node1-overall-status" class="px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full bg-gray-700 text-gray-300">
+                        Waiting...
+                    </span>
+                </div>
+
+                <!-- Inner Temperature Section -->
+                <div class="mb-6 bg-gray-900/50 rounded-xl p-4 border border-gray-800" id="inner-temp-box">
+                    <p class="text-sm text-gray-400 mb-1 font-medium uppercase tracking-wider">Vaccine Core Temp</p>
+                    <div class="flex items-end justify-between">
+                        <div class="flex items-start">
+                            <span id="node1-inner-val" class="text-5xl font-black text-gray-200 tracking-tighter">--.-</span>
+                            <span class="text-2xl text-gray-500 ml-1 mt-1">°C</span>
+                        </div>
+                        <i id="node1-inner-icon" class="ph-fill ph-check-circle text-3xl text-gray-600"></i>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Target Range: 2.0°C - 8.0°C</p>
+                </div>
+
+                <!-- Surrounding Temperature Section -->
+                <div class="bg-gray-900/50 rounded-xl p-4 border border-gray-800" id="surr-temp-box">
+                    <p class="text-sm text-gray-400 mb-1 font-medium uppercase tracking-wider">Room Ambient Temp</p>
+                    <div class="flex items-end justify-between">
+                        <div class="flex items-start">
+                            <span id="node1-surr-val" class="text-4xl font-bold text-gray-200 tracking-tighter">--.-</span>
+                            <span class="text-xl text-gray-500 ml-1 mt-1">°C</span>
+                        </div>
+                        <i id="node1-surr-icon" class="ph-fill ph-check-circle text-2xl text-gray-600"></i>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Max Limit: 30.0°C</p>
+                </div>
+
+                <!-- Data Timestamp -->
+                <div class="mt-6 text-right">
+                    <p class="text-xs text-gray-500">Last updated: <span id="node1-time">Never</span></p>
+                </div>
+            </div>
+            <!-- END NODE 1 CARD -->
+
+            <!-- Placeholder for Future Node 2 -->
+            <div class="bg-cardbg/50 rounded-2xl p-6 border border-gray-800 border-dashed flex flex-col items-center justify-center text-center opacity-50">
+                <i class="ph ph-plus-circle text-4xl text-gray-600 mb-2"></i>
+                <h3 class="text-lg font-bold text-gray-400">Add Node 02</h3>
+                <p class="text-sm text-gray-600">Deploy additional STM32 hardware to monitor more zones.</p>
+            </div>
+
+            <!-- Placeholder for Future Node 3 -->
+            <div class="bg-cardbg/50 rounded-2xl p-6 border border-gray-800 border-dashed flex flex-col items-center justify-center text-center opacity-50 hidden lg:flex">
+                <i class="ph ph-plus-circle text-4xl text-gray-600 mb-2"></i>
+                <h3 class="text-lg font-bold text-gray-400">Add Node 03</h3>
+                <p class="text-sm text-gray-600">Deploy additional STM32 hardware to monitor more zones.</p>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- THE JAVASCRIPT (The Brain of the Dashboard) -->
+    <!-- ========================================== -->
+    <script>
+        // 1. SET YOUR UBUNTU IP ADDRESS HERE!
+        // This is the IP address of your Ubuntu hotspot where Mosquitto is running.
+        const brokerIP = "10.172.99.147"; 
+        
+        // Create the connection link (Port 9001 is for WebSockets)
+        const brokerUrl = `ws://${brokerIP}:9001`; 
+        
+        // Connect to the Switchboard
+        console.log("Attempting to connect to:", brokerUrl);
+        const client = mqtt.connect(brokerUrl);
+
+        // UI Elements for Server Status
+        const connText = document.getElementById("connection-text");
+        const connDot = document.getElementById("connection-dot");
+
+        // 2. WHEN SUCCESSFULLY CONNECTED
+        client.on("connect", () => {
+            console.log("Successfully connected to Ubuntu Mosquitto Broker!");
+            
+            // Update the top navigation bar to show green success
+            connText.innerText = "Hub Connected";
+            connDot.classList.remove("bg-warning", "animate-pulse");
+            connDot.classList.add("bg-safe");
+            
+            // Tell the switchboard we want to listen to Node 1!
+            client.subscribe("factory/node1/sensors");
+        });
+
+        // If the connection drops or fails
+        client.on("offline", () => {
+            connText.innerText = "Hub Disconnected";
+            connDot.classList.remove("bg-safe");
+            connDot.classList.add("bg-danger", "animate-pulse");
+        });
+
+        // 3. WHEN NEW DATA ARRIVES FROM THE ESP32
+        client.on("message", (topic, message) => {
+            // Convert the raw data back into a readable JavaScript dictionary
+            const payload = JSON.parse(message.toString());
+            console.log("Received data:", payload);
+
+            // Get the current time for the timestamp
+            const now = new Date();
+            document.getElementById("node1-time").innerText = now.toLocaleTimeString();
+
+            // === UPDATE INNER TEMPERATURE ===
+            const innerVal = document.getElementById("node1-inner-val");
+            const innerBox = document.getElementById("inner-temp-box");
+            const innerIcon = document.getElementById("node1-inner-icon");
+            const overallStatus = document.getElementById("node1-overall-status");
+            const mainCard = document.getElementById("node1-card");
+
+            innerVal.innerText = payload.inner_temp.toFixed(1);
+
+            // Is the Inner Temp alarming? (Below 2 or Above 8)
+            if (payload.alert_inner === 1) {
+                innerVal.classList.add("text-danger");
+                innerVal.classList.remove("text-gray-200", "text-safe");
+                innerBox.classList.add("alarm-active");
+                innerIcon.className = "ph-fill ph-warning-circle text-3xl text-danger";
+                
+                // Set overall card status
+                overallStatus.innerText = "CRITICAL ALERT";
+                overallStatus.className = "px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full bg-danger text-white animate-pulse";
+                mainCard.classList.add("border-danger");
+            } else {
+                // It is Safe!
+                innerVal.classList.remove("text-danger");
+                innerVal.classList.add("text-safe");
+                innerBox.classList.remove("alarm-active");
+                innerIcon.className = "ph-fill ph-check-circle text-3xl text-safe";
+                
+                // Set overall card status to normal
+                overallStatus.innerText = "ONLINE";
+                overallStatus.className = "px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full bg-safe/20 text-safe";
+                mainCard.classList.remove("border-danger");
+            }
+
+            // === UPDATE SURROUNDING TEMPERATURE ===
+            const surrVal = document.getElementById("node1-surr-val");
+            const surrBox = document.getElementById("surr-temp-box");
+            const surrIcon = document.getElementById("node1-surr-icon");
+
+            surrVal.innerText = payload.surr_temp.toFixed(1);
+
+            // Is the Surrounding Temp alarming? (Above 30)
+            if (payload.alert_surr === 1) {
+                surrVal.classList.add("text-warning");
+                surrVal.classList.remove("text-gray-200", "text-safe");
+                surrBox.classList.add("border", "border-warning/50", "bg-warning/10");
+                surrIcon.className = "ph-fill ph-warning text-2xl text-warning";
+            } else {
+                // It is Safe!
+                surrVal.classList.remove("text-warning");
+                surrVal.classList.add("text-safe");
+                surrBox.classList.remove("border", "border-warning/50", "bg-warning/10");
+                surrIcon.className = "ph-fill ph-check-circle text-2xl text-safe";
+            }
+        });
+    </script>
+</body>
+</html>
